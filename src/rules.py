@@ -9,6 +9,37 @@ CREATE_ROLES = {'intake_officer'}
 ACTION_ROLES = {'submit': {'legal_rep', 'case_officer'}, 'request_evidence': {'case_officer'}, 'respond': {'legal_rep'}, 'decide': {'case_officer', 'supervisor'}, 'appeal': {'legal_rep'}, 'close': {'supervisor'}}
 TRANSITIONS = {'submit': {'draft': 'submitted'}, 'request_evidence': {'submitted': 'evidence_requested'}, 'respond': {'evidence_requested': 'response_received'}, 'decide': {'submitted': 'decided', 'response_received': 'decided'}, 'appeal': {'decided': 'appealed'}, 'close': {'decided': 'closed', 'appealed': 'closed'}}
 
+# 关联案组：已决定或归档的案件不再失效重算，只追加差异。
+DECIDED_STATES = {'decided', 'appealed', 'closed'}
+GROUP_CREATE_ROLES = {'case_officer', 'supervisor'}
+RECEIPT_ROLES = {'legal_rep', 'case_officer'}
+RESTRUCTURE_ROLES = {'case_officer', 'supervisor'}
+RECEIPT_KINDS = {'reschedule', 'supplement'}
+RESTRUCTURE_OPS = {'split', 'merge'}
+
+
+def shift_group_deadline(payload: Dict[str, Any], shift_days: int) -> Tuple[Dict[str, Any], int]:
+    """未决定案件的期限失效重算：在原期限上整体顺延，并刷新派生字段。"""
+    updated = dict(payload)
+    before = int(updated.get("deadline_day", 0))
+    updated["deadline_day"] = before + int(shift_days)
+    if "evidence_due_day" in updated:
+        updated["evidence_due_day"] = int(updated["evidence_due_day"]) + int(shift_days)
+    updated["days_remaining"] = int(updated["deadline_day"]) - int(updated.get("response_day", 0))
+    updated["overdue"] = updated["days_remaining"] < 0
+    # 重算完成后期限重新有效；重算前的失效留在审计事件中。
+    updated["deadline_valid"] = True
+    return updated, before
+
+
+def append_deadline_diff(payload: Dict[str, Any], diff: Dict[str, Any]) -> Dict[str, Any]:
+    """已决定/归档案件只追加差异，不改状态也不改期限。"""
+    updated = dict(payload)
+    diffs = list(updated.get("deadline_diffs", []))
+    diffs.append(diff)
+    updated["deadline_diffs"] = diffs
+    return updated
+
 
 class DomainRules:
     INITIAL_STATE = INITIAL_STATE
