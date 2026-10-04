@@ -23,6 +23,27 @@ class Conflict(DomainError):
     code = "conflict"
 
 
+class StaleRevision(Conflict):
+    """案组修订号与调用方预期不一致：后到者需要转入待合组。"""
+
+    code = "stale_revision"
+
+    def __init__(self, message: str, *, current_revision: int = None) -> None:
+        super().__init__(message)
+        self.current_revision = current_revision
+
+
+class GroupDissolved(Conflict):
+    """案组已拆分/合并而定格，旧修订输入不能再写入，只能转待合组。"""
+
+    code = "group_dissolved"
+
+
+class PendingMerge(DomainError):
+    status = 202
+    code = "pending_merge"
+
+
 class PermissionDenied(DomainError):
     status = 403
     code = "permission_denied"

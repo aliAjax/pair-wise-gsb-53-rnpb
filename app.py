@@ -3,6 +3,8 @@ import argparse
 from pathlib import Path
 
 from src.audit import AuditRecorder
+from src.group_repository import GroupRepository
+from src.group_service import GroupService
 from src.http_api import create_server
 from src.repository import Repository
 from src.rules import DomainRules
@@ -17,7 +19,12 @@ DEFAULT_PORT = 8329
 def build_service(db_path: str) -> Service:
     repository = Repository(db_path)
     audit = AuditRecorder(repository)
-    return Service(repository, DomainRules(), audit)
+    service = Service(repository, DomainRules(), audit)
+    group_service = GroupService(repository, GroupRepository(db_path), DomainRules(), audit)
+    # 写入中断后，重启时从最近完成案件继续未完成的组事务
+    group_service.resume_interrupted()
+    service.group_service = group_service
+    return service
 
 
 def parse_args():

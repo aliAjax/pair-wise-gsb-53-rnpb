@@ -6,28 +6,45 @@
   <title>移民案件期限与材料管理</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #17212b; }
-    main { max-width: 960px; margin: auto; }
+    main { max-width: 1080px; margin: auto; }
     button { padding: .55rem .9rem; cursor: pointer; }
     pre { background: #f4f6f8; padding: 1rem; overflow: auto; border-radius: 8px; }
-    .row { display: flex; gap: 1rem; align-items: center; }
+    .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin: .5rem 0; }
+    h2 { margin-top: 2rem; font-size: 1.15rem; }
   </style>
 </head>
 <body>
 <main>
   <h1>移民案件期限与材料管理</h1>
-  <p>最小演示页。完整业务流程通过README中的JSON接口调用。</p>
-  <div class="row"><button id="load">加载记录</button><button id="stats">查看状态统计</button></div>
+  <p>最小演示页。案组事务（建组、材料回执、拆分/合并、待合组）通过下方按钮读取。</p>
+
+  <h2>案件</h2>
+  <div class="row">
+    <button id="load">加载记录</button><button id="stats">查看状态统计</button>
+  </div>
+
+  <h2>案组事务</h2>
+  <div class="row">
+    <button id="groups">列出案组</button>
+    <button id="pending">待合组队列</button>
+    <button id="resume">恢复中断的组事务</button>
+  </div>
+
   <pre id="output">点击上方按钮读取服务状态。</pre>
 </main>
 <script>
 const headers = {"X-User-Id":"demo-admin","X-Role":"admin","X-Org":"demo"};
-async function show(path) {
-  const response = await fetch(path, {headers});
+async function show(path, options) {
+  const response = await fetch(path, Object.assign({headers}, options || {}));
   const data = await response.json();
   document.getElementById("output").textContent = JSON.stringify(data, null, 2);
 }
 document.getElementById("load").onclick = () => show("/api/records?limit=20");
 document.getElementById("stats").onclick = () => show("/api/stats");
+document.getElementById("groups").onclick = () => show("/api/groups?limit=20");
+document.getElementById("pending").onclick = () => show("/api/pending-merges");
+document.getElementById("resume").onclick = () => show("/api/group-jobs/resume", {method:"POST", body:"{}",
+  headers: Object.assign({"Content-Type":"application/json"}, headers)});
 </script>
 </body>
 </html>

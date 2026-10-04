@@ -12,6 +12,10 @@ from .domain import Actor, DomainError, PermissionDenied, ValidationError
 RECORD_RE = re.compile(r"^/api/records/(\d+)$")
 ACTION_RE = re.compile(r"^/api/records/(\d+)/actions/([a-z_]+)$")
 AUDIT_RE = re.compile(r"^/api/records/(\d+)/audit$")
+GROUP_RE = re.compile(r"^/api/groups/(\d+)$")
+GROUP_AUDIT_RE = re.compile(r"^/api/groups/(\d+)/audit$")
+RECEIPT_RE = re.compile(r"^/api/groups/(\d+)/receipts$")
+PENDING_RE = re.compile(r"^/api/pending-merges/(\d+)/(resolve|discard)$")
 
 
 def make_handler(service: Any, static_dir: Path):
@@ -87,6 +91,26 @@ def make_handler(service: Any, static_dir: Path):
                 if parsed.path == "/api/stats":
                     self._send(200, service.stats(self._actor()))
                     return
+                if parsed.path == "/api/groups":
+                    query = parse_qs(parsed.query)
+                    groups = service.group_service.list_groups(
+                        self._actor(), status=query.get("status", [None])[0],
+                        limit=int(query.get("limit", ["100"])[0]))
+                    self._send(200, {"items": groups})
+                    return
+                if parsed.path == "/api/pending-merges":
+                    self._send(200, {"items": service.group_service.list_pending(self._actor())})
+                    return
+                match = GROUP_AUDIT_RE.match(parsed.path)
+                if match:
+                    self._send(200, {"items": service.group_service.group_timeline(
+                        self._actor(), int(match.group(1)))})
+                    return
+                match = GROUP_RE.match(parsed.path)
+                if match:
+                    self._send(200, service.group_service.group_detail(
+                        self._actor(), int(match.group(1))))
+                    return
                 self._send(404, {"error": "not_found", "message": "路径不存在"})
             except Exception as exc:
                 self._handle_error(exc)
@@ -106,6 +130,38 @@ def make_handler(service: Any, static_dir: Path):
                         raise ValidationError("expected_version必须是整数")
                     record = service.act(self._actor(), int(match.group(1)), version, match.group(2), body.get("data", {}))
                     self._send(200, record)
+                    return
+                if parsed.path == "/api/groups":
+                    data = body.get("data", body)
+                    result = service.group_service.create_group(
+                        self._actor(), body.get("reference", data.get("reference", "")),
+                        data.get("members", []), data.get("note", ""))
+                    self._send(201, result)
+                    return
+                match = RECEIPT_RE.match(parsed.path)
+                if match:
+                    result = service.group_service.submit_receipt(
+                        self._actor(), int(match.group(1)), body.get("data", body))
+                    self._send(202 if result.get("status") == "pending_merge" else 200, result)
+                    return
+                if parsed.path == "/api/regroups":
+                    result = service.group_service.regroup(self._actor(), body.get("data", body))
+                    self._send(202 if result.get("status") == "pending_merge" else 201, result)
+                    return
+                if parsed.path == "/api/group-jobs/resume":
+                    self._send(200, {"items": service.group_service.resume_interrupted(self._actor())})
+                    return
+                match = PENDING_RE.match(parsed.path)
+                if match:
+                    pending_id = int(match.group(1))
+                    action = match.group(2)
+                    if action == "resolve":
+                        result = service.group_service.resolve_pending(
+                            self._actor(), pending_id, body.get("data", body))
+                        self._send(202 if result.get("status") == "pending_merge" else 200, result)
+                    else:
+                        result = service.group_service.discard_pending(self._actor(), pending_id)
+                        self._send(200, result)
                     return
                 self._send(404, {"error": "not_found", "message": "路径不存在"})
             except Exception as exc:
